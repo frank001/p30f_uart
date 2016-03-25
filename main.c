@@ -5,24 +5,16 @@
 #include "config.h"
 #include "interrupt.h"
 
+extern unsigned char txBuffer[];
+extern unsigned char txPtr;
 
-
-unsigned char resetDevice = 0;
 unsigned char isConnected = 0;
-unsigned char txUART[255];
-unsigned char txCount;
 
-unsigned char hello[] ="Hello World!";
+unsigned char hello[] ="Hello World!Hello World!Hello World!Hello World!Hello World!Hello World!Hello World!Hello World!";
 
 
 void delay(unsigned int d) {
     __delay32(d*10000);
-}
-
-void writeUART(unsigned char trx) {
-    U2TXREG = trx;
-    while (!U2STAbits.TRMT) ;
-    
 }
 
 
@@ -44,9 +36,11 @@ int main(void) {
     U2BRG = UBRG2_VALUE;
     
     IEC1bits.U2RXIE=1;
+    IEC1bits.U2TXIE=1;
     U2STA&=0xfffc;
     U2MODEbits.UARTEN=1;
     U2STAbits.UTXEN=1;
+    
     
     while (1) {
         
@@ -54,38 +48,25 @@ int main(void) {
             if (!flipbit) DELAY_MS(100);
             if (_RD2==0) {
                 flipbit = 1;
-                IEC1bits.U2RXIE=0;              //disable receive interrupt.
                                                 //TODO: don't send when not connected!
-                //DELAY_MS(10);
+                while (IFS1bits.U2TXIF) ;       //wait until clear to transmit
+                //IEC1bits.U2TXIE=0;
+                WriteWebSocket(0x81);           //FIN bit high and opcode=1
+                WriteWebSocket(sizeof(hello));  //payload length
+                for (i=0;i<sizeof(hello);i++) 
+                    WriteWebSocket(hello[i]);
+                //IEC1bits.U2TXIE=1;
+                U2TXREG = txBuffer[txPtr++];    //write the first byte
+                
                 _LATB3 = 1;
-                if (txCount == 0) {
-   //                 txCount = 0;                    //we're gonna write, so set the pointer to zero
-                    txUART[txCount++] = 0x81;       //FIN bit high and opcode=1
-                    txUART[txCount++] = sizeof(hello);
-                    for (tx=0;tx<sizeof(hello);tx++) txUART[txCount++] = hello[tx];
-                    //txCount--;
-                    //IEC1bits.U2RXIE=1;              
-                }
-                //}
             }
         }
         else { 
             _LATB3 = 0;
             flipbit=0;
         }
-            //DELAY_MS(100);
-            
-        
-        if (txUART[0]!=0) {    //we have data to transmit to UART.
-            for (i=0;i<txCount;i++) {
-                tx = txUART[i];
-                writeUART(tx);
-            }
-            txCount = 0;
-            for (i=0;i<255;i++) txUART[i]=0;
-            
-        }
-        IEC1bits.U2RXIE=1; //enable receive interrupt
+        DELAY_MS(15);
+        ReadWebSocket();    
         
         //_LATB0 = 1;
         //DELAY_MS(1000);
