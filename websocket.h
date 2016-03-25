@@ -8,6 +8,7 @@
 #ifndef WEBSOCKET_H
 #define	WEBSOCKET_H
 
+#define MAXBYTES 256
 #define WebSocketKeyLength 24
 
 typedef union {                 //this can't be right?, TODO: investigate
@@ -33,8 +34,9 @@ typedef union {
     unsigned char OPCODE : 4;
 } WebSocketFrame;
 
+void ReadWebSocket(void);
+void WriteWebSocket(unsigned char);
 void AnswerClient(unsigned char *);
-void ResetFlags(void);
 void ReadClient(unsigned char);
 void GetClientKeyIdent(unsigned char);
 void Handshake(void);
