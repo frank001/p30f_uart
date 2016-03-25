@@ -3,14 +3,8 @@
 #include "sha1.h"
 #include "base64.h"
 
-
-//extern volatile unsigned char i2c_reg_map[];
-//extern volatile unsigned int i2c_reg_addr;
-
-extern unsigned char resetDevice;
 extern unsigned char isConnected;               //debugging
 extern unsigned char txUART[];
-extern unsigned char txCount;
 
 unsigned char WebSocketKeyIdent[] = "Sec-WebSocket-Key: ";
 char WebSocketKey[] = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -28,9 +22,29 @@ unsigned int payloadlen = sizeof(wsData);
 
 unsigned char cntrCRLF = 0;
 
+extern unsigned char rxBuffer[];
+extern unsigned char rxPtr;
+unsigned char readPtr = 0;
+
+extern unsigned char txBuffer[];
+extern unsigned char txPtr;
+unsigned char writePtr = 0;
+
 
 WebSocketFrame wsFrame;
 void ResetFlags(void) { flags.value = 0; }
+
+void ReadWebSocket(void) {
+    while (readPtr!=rxPtr) {
+        ReadClient(rxBuffer[readPtr++]);
+        readPtr%=MAXBYTES;
+    } 
+}
+void WriteWebSocket(unsigned char tx) { 
+    txBuffer[writePtr++]=tx;
+    writePtr%=MAXBYTES;
+}
+
 
 void ReadClient(unsigned char rcv) {
     if (!flags.SOCKETCONNECT) {                     //lets see if there is a web socket identification key
@@ -53,12 +67,12 @@ void GetClientKeyIdent(unsigned char rcv) {
     if (!flags.KEYFOUND) {
         if (rcv==WebSocketKeyIdent[keycntr]) keycntr++;                                         //lets see if we find a client web-socket key identification string
         if (keycntr==sizeof(WebSocketKeyIdent) && rcv!=WebSocketKeyIdent[keycntr]) keycntr=0;   //check if the key identification is still valid
-        if (keycntr==sizeof(WebSocketKeyIdent)-1) {                                                 //key identification found! read the next 24 chars for the key itself.
+        if (keycntr==sizeof(WebSocketKeyIdent)-1) {                                             //key identification found! read the next 24 chars for the key itself.
             flags.KEYFOUND = 1;
             keycntr = 0;
         } 
     } else {
-        if (keycntr<WebSocketKeyLength) {                                                           //store the client key when the identification has been found
+        if (keycntr<WebSocketKeyLength) {                                                       //store the client key when the identification has been found
             WebSocketKey[keycntr] = rcv;
             if (keycntr==WebSocketKeyLength-1) {
                 //we've got the key! now hash it and reply!
@@ -68,8 +82,7 @@ void GetClientKeyIdent(unsigned char rcv) {
             }
             keycntr++;
         }
-        //watch for CRLF CRLF
-        if (rcv==0x0d || rcv ==0x0a) { 
+        if (rcv==0x0d || rcv ==0x0a) {      //watch for CRLF CRLF
             cntrCRLF++;
             if (cntrCRLF==4) { 
                 keycntr = 0;
@@ -84,7 +97,6 @@ void Handshake(void) {
     char Sha1Result[20];
     char ResultBase64[40];
     unsigned char i;
-    //unsigned char txCount=0;
     
     //hash the web socket key
     SHA1Initialize(&ReplyHash);
@@ -95,44 +107,28 @@ void Handshake(void) {
     //Base 64 encoding
     Base64encode(ResultBase64, Sha1Result, 20);
     
-    txCount = 0;            //we're gonna write. set the pointer to zero.
-    
-    //write out the reply, we're only transmitting from the main loop so place it in a buffer
+    //write out the reply.
     for (i=0;i<sizeof(ServerReply);i++) 
-        txUART[txCount++] = ServerReply[i];
+        WriteWebSocket(ServerReply[i]);
     
     //write out the hash
     
-    txCount--;                      //disregard the null termination char of serverReply
+    //txCount--;                      //disregard the null termination char of serverReply
+    writePtr--;
     for (i=0;i<28;i++)                                  //28???? TODO: get the length from base64 encoding
-        txUART[txCount++] = ResultBase64[i];
+        WriteWebSocket(ResultBase64[i]);
     
     //we need to comply to HTTP protocol at this point so twice CRLF it is.
-    txUART[txCount++] = 0x0d;
-    txUART[txCount++] = 0x0a;
-    txUART[txCount++] = 0x0d;
-    txUART[txCount++] = 0x0a;
+    WriteWebSocket(0x0d);
+    WriteWebSocket(0x0a);
+    WriteWebSocket(0x0d);
+    WriteWebSocket(0x0a);
     
-    
-    /*i2c_reg_addr=0;                             //we're gonna write, so set the pointer to zero
-    for (i=0;i<sizeof(ServerReply);i++) 
-        i2c_reg_map[i2c_reg_addr++] = ServerReply[i];
-    
-    //write out the hash
-    i2c_reg_addr--;                                     //why is this needed??? (null value)
-    for (i=0;i<28;i++)                                  //28???? TODO: get the length from base64 encoding
-        i2c_reg_map[i2c_reg_addr++] = ResultBase64[i];
-   
-    //we need to comply to HTTP protocol at this point so twice CRLF it is.
-    i2c_reg_map[i2c_reg_addr++] = 0x0d;
-    i2c_reg_map[i2c_reg_addr++] = 0x0a;
-    i2c_reg_map[i2c_reg_addr++] = 0x0d;
-    i2c_reg_map[i2c_reg_addr++] = 0x0a;
-    */
+
     flags.SOCKETCONNECT = 1;
-    
     wsByteCount=0;
     cntrCRLF = 0;
+    U2TXREG = txBuffer[txPtr++];    //write the first byte
 }
 
 
@@ -142,10 +138,6 @@ void AnswerClient(unsigned char *msg) {
     unsigned char i;
     
     wsFrame.value = msg[0];      
-    //i2c_reg_addr=0;                 //we're gonna write, so set the pointer to zero
-    
-    //while (txUART[0]!=0);
-    //txCount = 0;
     
     switch (msg[0] & 0x0f) {    //opcode
         case 0x00:      //continuation frame
@@ -159,34 +151,30 @@ void AnswerClient(unsigned char *msg) {
                     decoded[i] = msg[i+6]^mask[i%4];
                 //at this point we have the complete message -> invoke command handler
                 //echo the message back for now
-                txCount = 0;                    //we're gonna write, so set the pointer to zero
-                txUART[txCount++] = 0x81;       //FIN bit high and opcode=1
-                txUART[txCount++] = payloadlen;
+                //txCount = 0;                    //we're gonna write, so set the pointer to zero
+                WriteWebSocket(0x81);       //FIN bit high and opcode=1
+                WriteWebSocket(payloadlen);
                 for (i=0;i<payloadlen;i++) {
-                    txUART[txCount++] = decoded[i];
+                    WriteWebSocket(decoded[i]);
                 }
             } else {
                 //TODO: check for mask. frames from clients should be masked otherwise disconnect.
             }
+            i=0;
+            U2TXREG = txBuffer[txPtr++];    //write the first byte 
             break;
         case 0x02:      //binary frame
             break;
         case 0x08:      //connection close
                         //if we didn't send a close frame first we should respond with a close frame
-            txCount = 0;                    //we're gonna write, so set the pointer to zero
-            txUART[txCount++] = 0x88;       //FIN bit high and opcode=8
-            txUART[txCount++] = 0x00;       //we have no data
-            //txUART[txCount++] = 0x00;       //NULL
+            //txCount = 0;                    //we're gonna write, so set the pointer to zero
+            WriteWebSocket(0x88);       //FIN bit high and opcode=8
+            WriteWebSocket(0x00);       //we have no data
             flags.ISCONNECTED = 0;
             flags.KEYFOUND = 0;
             flags.SOCKETCONNECT = 0;
             LATB = 0;
-            
-            //resetDevice = 1;
-            //i2c_reg_map[i2c_reg_addr++] = 0x00;
-            
-            //asm("RESET");   //total reset
-            resetDevice = 1;    //total reset
+            U2TXREG = txBuffer[txPtr++];    //write the first byte
             break;
         case 0x09:      //ping
             break;
@@ -194,7 +182,6 @@ void AnswerClient(unsigned char *msg) {
             break;
         default:        //reserved
             break;
-
     }
     wsByteCount = 0;                      //set the web socket read pointer to zero
     payloadlen = 0;
