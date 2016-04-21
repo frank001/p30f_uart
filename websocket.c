@@ -113,8 +113,7 @@ void Handshake(void) {
     
     //write out the hash
     
-    //txCount--;                      //disregard the null termination char of serverReply
-    writePtr--;
+    writePtr--;                                         //disregard the null termination char of serverReply
     for (i=0;i<28;i++)                                  //28???? TODO: get the length from base64 encoding
         WriteWebSocket(ResultBase64[i]);
     
@@ -123,12 +122,11 @@ void Handshake(void) {
     WriteWebSocket(0x0a);
     WriteWebSocket(0x0d);
     WriteWebSocket(0x0a);
-    
 
     flags.SOCKETCONNECT = 1;
     wsByteCount=0;
     cntrCRLF = 0;
-    U2TXREG = txBuffer[txPtr++];    //write the first byte
+    Commit();
 }
 
 
@@ -136,6 +134,7 @@ void AnswerClient(unsigned char *msg) {
     unsigned char mask[4];
     char decoded[255];
     unsigned char i;
+    
     
     wsFrame.value = msg[0];      
     
@@ -145,6 +144,12 @@ void AnswerClient(unsigned char *msg) {
         case 0x01:      //text frame
             if (msg[1] & 0x80) {             
                 payloadlen = msg[1] & 0x7f;     //TODO: check for payload length, limit this to minimize memory usage
+                /*i=2+4+payloadlen;               //check total length of received message 
+                if (wsByteCount!=i) {           //drop connection at mismatch
+                    msg[0] = 0x08;
+                    AnswerClient(msg);
+                    break;
+                }*/                     ///this doesn't work, when in fail mode, no RX interrupt is received...             
                 for (i=0;i<4;i++)               //read in the mask
                     mask[i] = msg[2+i];
                 for (i=0;i<payloadlen;i++)      //decode the message
@@ -161,7 +166,7 @@ void AnswerClient(unsigned char *msg) {
                 //TODO: check for mask. frames from clients should be masked otherwise disconnect.
             }
             i=0;
-            U2TXREG = txBuffer[txPtr++];    //write the first byte 
+            Commit();
             break;
         case 0x02:      //binary frame
             break;
@@ -174,7 +179,7 @@ void AnswerClient(unsigned char *msg) {
             flags.KEYFOUND = 0;
             flags.SOCKETCONNECT = 0;
             LATB = 0;
-            U2TXREG = txBuffer[txPtr++];    //write the first byte
+            Commit();
             break;
         case 0x09:      //ping
             break;
