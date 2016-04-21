@@ -8,7 +8,7 @@
 #ifndef WEBSOCKET_H
 #define	WEBSOCKET_H
 
-#define MAXBYTES 256
+#define MAXBYTES 255
 #define WebSocketKeyLength 24
 
 typedef union {                 //this can't be right?, TODO: investigate
