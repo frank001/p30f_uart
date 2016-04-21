@@ -15,8 +15,8 @@
  
 #define DELAY_US(us)  __delay32(CYCLES_PER_US * ((unsigned long) us));    //delay some number of microseconds
   
-#define UART2_BAUD 115200
-#define UBRG2_VALUE (FCY/UART2_BAUD)/16 - 1
+#define UART1_BAUD 115200
+#define UBRG1_VALUE (FCY/UART1_BAUD)/16 - 1
 
 void initUART(void);
 void Commit(void);
