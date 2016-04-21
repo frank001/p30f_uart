@@ -65,7 +65,6 @@ int main(void) {
                 adc10 = ADC10;
                 WriteWebSocket(0x82);           //FIN bit high and opcode=2 (binary)
                 WriteWebSocket(0x02);  //payload length
-                //for (i=0;i<sizeof(adc10);i++) 
                 WriteWebSocket(adc10 & 0x00ff);
                 WriteWebSocket((adc10 & 0xff00)>>7);
                 Commit();
@@ -77,16 +76,7 @@ int main(void) {
                 for (i=0;i<sizeof(hello);i++) 
                     WriteWebSocket(hello[i]);
                 Commit();
-                //_LATB3 = 1;
             }
-            /*else { 
-                //_LATB3 = 1;
-                if (flipbit) DELAY_MS(100);
-                if (_RD2==1){
-                    flipbit=0;
-                    _LATB3 = 0;
-                }
-            }*/
         }
         DELAY_MS(10);
         ReadWebSocket();    
