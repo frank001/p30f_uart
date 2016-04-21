@@ -4,7 +4,6 @@
 #include "base64.h"
 
 extern unsigned char isConnected;               //debugging
-extern unsigned char txUART[];
 
 unsigned char WebSocketKeyIdent[] = "Sec-WebSocket-Key: ";
 char WebSocketKey[] = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -117,7 +116,7 @@ void Handshake(void) {
     for (i=0;i<28;i++)                                  //28???? TODO: get the length from base64 encoding
         WriteWebSocket(ResultBase64[i]);
     
-    //we need to comply to HTTP protocol at this point so twice CRLF it is.
+    //we still need to comply to HTTP protocol at this point so twice CRLF it is.
     WriteWebSocket(0x0d);
     WriteWebSocket(0x0a);
     WriteWebSocket(0x0d);
@@ -135,7 +134,6 @@ void AnswerClient(unsigned char *msg) {
     char decoded[255];
     unsigned char i;
     
-    
     wsFrame.value = msg[0];      
     
     switch (msg[0] & 0x0f) {    //opcode
@@ -144,20 +142,13 @@ void AnswerClient(unsigned char *msg) {
         case 0x01:      //text frame
             if (msg[1] & 0x80) {             
                 payloadlen = msg[1] & 0x7f;     //TODO: check for payload length, limit this to minimize memory usage
-                /*i=2+4+payloadlen;               //check total length of received message 
-                if (wsByteCount!=i) {           //drop connection at mismatch
-                    msg[0] = 0x08;
-                    AnswerClient(msg);
-                    break;
-                }*/                     ///this doesn't work, when in fail mode, no RX interrupt is received...             
                 for (i=0;i<4;i++)               //read in the mask
                     mask[i] = msg[2+i];
                 for (i=0;i<payloadlen;i++)      //decode the message
                     decoded[i] = msg[i+6]^mask[i%4];
                 //at this point we have the complete message -> invoke command handler
                 //echo the message back for now
-                //txCount = 0;                    //we're gonna write, so set the pointer to zero
-                WriteWebSocket(0x81);       //FIN bit high and opcode=1
+                WriteWebSocket(0x81);           //FIN bit high and opcode=1
                 WriteWebSocket(payloadlen);
                 for (i=0;i<payloadlen;i++) {
                     WriteWebSocket(decoded[i]);
@@ -172,7 +163,6 @@ void AnswerClient(unsigned char *msg) {
             break;
         case 0x08:      //connection close
                         //if we didn't send a close frame first we should respond with a close frame
-            //txCount = 0;                    //we're gonna write, so set the pointer to zero
             WriteWebSocket(0x88);       //FIN bit high and opcode=8
             WriteWebSocket(0x00);       //we have no data
             flags.ISCONNECTED = 0;
