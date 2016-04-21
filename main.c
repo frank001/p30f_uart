@@ -69,8 +69,7 @@ int main(void) {
                 WriteWebSocket((adc10 & 0xff00)>>7);
                 Commit();
             }
-            
-            if (senddata) {
+            else if (senddata) {
                 WriteWebSocket(0x81);           //FIN bit high and opcode=1
                 WriteWebSocket(sizeof(hello));  //payload length
                 for (i=0;i<sizeof(hello);i++) 
